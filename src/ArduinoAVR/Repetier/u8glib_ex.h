@@ -5944,6 +5944,220 @@ void u8g_backup_spi(uint8_t msg)
 }
 
 #endif
+/*
+
+  u8g_pb16h1.c
+  
+  2x 8bit height monochrom (1 bit) page buffer
+  byte has horizontal orientation
+
+  Universal 8bit Graphics Library
+  
+  Copyright (c) 2012, olikraus@gmail.com
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without modification, 
+  are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright notice, this list 
+    of conditions and the following disclaimer.
+    
+  * Redistributions in binary form must reproduce the above copyright notice, this 
+    list of conditions and the following disclaimer in the documentation and/or other 
+    materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND 
+  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, 
+  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR 
+  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT 
+  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, 
+  STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  
+
+
+  total buffer size is limited to 2*256 bytes because of the calculation inside the set pixel procedure
+
+
+*/
+
+//#include "u8g.h"
+#include <string.h>
+
+
+void u8g_pb16h1_Init(u8g_pb_t *b, void *buf, u8g_uint_t width) U8G_NOINLINE;
+void u8g_pb16h1_set_pixel(u8g_pb_t *b, u8g_uint_t x, u8g_uint_t y, uint8_t color_index) U8G_NOINLINE;
+void u8g_pb16h1_SetPixel(u8g_pb_t *b, const u8g_dev_arg_pixel_t * const arg_pixel) U8G_NOINLINE ;
+void u8g_pb16h1_Set8PixelStd(u8g_pb_t *b, u8g_dev_arg_pixel_t *arg_pixel) U8G_NOINLINE;
+uint8_t u8g_dev_pb8h1_base_fn(u8g_t *u8g, u8g_dev_t *dev, uint8_t msg, void *arg);
+
+void u8g_pb16h1_Clear(u8g_pb_t *b)
+{
+  uint8_t *ptr = (uint8_t *)b->buf;
+  uint8_t *end_ptr = ptr;
+  end_ptr += b->width*2;
+  do
+  {
+    *ptr++ = 0;
+  } while( ptr != end_ptr );
+}
+
+
+
+void u8g_pb16h1_Init(u8g_pb_t *b, void *buf, u8g_uint_t width)
+{
+  b->buf = buf;
+  b->width = width;
+  u8g_pb16h1_Clear(b);
+}
+
+
+/* limitation: total buffer must not exceed 2*256 bytes */
+void u8g_pb16h1_set_pixel(u8g_pb_t *b, u8g_uint_t x, u8g_uint_t y, uint8_t color_index)
+{
+  register uint8_t mask;
+  u8g_uint_t tmp;
+  uint8_t *ptr = b->buf;
+  
+  y -= b->p.page_y0;
+  if ( y >= 8 )
+  {
+    ptr += b->width;
+    y &= 0x07;
+  }
+  tmp = b->width;
+  tmp >>= 3;
+  tmp *= (uint8_t)y;
+  ptr += tmp;
+  
+  mask = 0x080;
+  mask >>= x & 7;
+  x >>= 3;
+  ptr += x;
+  if ( color_index )
+  {
+    *ptr |= mask;
+  }
+  else
+  {
+    mask ^=0xff;
+    *ptr &= mask;
+  }
+  
+}
+
+
+void u8g_pb16h1_SetPixel(u8g_pb_t *b, const u8g_dev_arg_pixel_t * const arg_pixel)
+{
+  if ( arg_pixel->y < b->p.page_y0 )
+    return;
+  if ( arg_pixel->y > b->p.page_y1 )
+    return;
+  if ( arg_pixel->x >= b->width )
+    return;
+  u8g_pb16h1_set_pixel(b, arg_pixel->x, arg_pixel->y, arg_pixel->color);
+}
+
+void u8g_pb16h1_Set8PixelStd(u8g_pb_t *b, u8g_dev_arg_pixel_t *arg_pixel)
+{
+  register uint8_t pixel = arg_pixel->pixel;
+  do
+  {
+    if ( pixel & 128 )
+    {
+      u8g_pb16h1_SetPixel(b, arg_pixel);
+    }
+    switch( arg_pixel->dir )
+    {
+      case 0: arg_pixel->x++; break;
+      case 1: arg_pixel->y++; break;
+      case 2: arg_pixel->x--; break;
+      case 3: arg_pixel->y--; break;
+    }
+    pixel <<= 1;
+  } while( pixel != 0  );
+}
+
+void u8g_pb16h1_Set8PixelOpt2(u8g_pb_t *b, u8g_dev_arg_pixel_t *arg_pixel)
+{
+  register uint8_t pixel = arg_pixel->pixel;
+  u8g_uint_t dx = 0;
+  u8g_uint_t dy = 0;
+  
+  switch( arg_pixel->dir )
+  {
+    case 0: dx++; break;
+    case 1: dy++; break;
+    case 2: dx--; break;
+    case 3: dy--; break;
+  }
+  
+  do
+  {
+    if ( pixel & 128 )
+      u8g_pb16h1_SetPixel(b, arg_pixel);
+    arg_pixel->x += dx;
+    arg_pixel->y += dy;
+    pixel <<= 1;
+  } while( pixel != 0  );  
+}
+
+
+uint8_t u8g_dev_pb16h1_base_fn(u8g_t *u8g, u8g_dev_t *dev, uint8_t msg, void *arg)
+{
+  u8g_pb_t *pb = (u8g_pb_t *)(dev->dev_mem);
+  switch(msg)
+  {
+    case U8G_DEV_MSG_SET_8PIXEL:
+      if ( u8g_pb_Is8PixelVisible(pb, (u8g_dev_arg_pixel_t *)arg) )
+        u8g_pb16h1_Set8PixelOpt2(pb, (u8g_dev_arg_pixel_t *)arg);
+      break;
+    case U8G_DEV_MSG_SET_PIXEL:
+      u8g_pb16h1_SetPixel(pb, (u8g_dev_arg_pixel_t *)arg);
+      break;
+    case U8G_DEV_MSG_INIT:
+      break;
+    case U8G_DEV_MSG_STOP:
+      break;
+    case U8G_DEV_MSG_PAGE_FIRST:
+      u8g_pb16h1_Clear(pb);
+      u8g_page_First(&(pb->p));
+      break;
+    case U8G_DEV_MSG_PAGE_NEXT:
+      if ( u8g_page_Next(&(pb->p)) == 0 )
+        return 0;
+      u8g_pb16h1_Clear(pb);
+      break;
+#ifdef U8G_DEV_MSG_IS_BBX_INTERSECTION
+    case U8G_DEV_MSG_IS_BBX_INTERSECTION:
+      return u8g_pb_IsIntersection(pb, (u8g_dev_arg_bbx_t *)arg);
+#endif
+    case U8G_DEV_MSG_GET_PAGE_BOX:
+      u8g_pb_GetPageBox(pb, (u8g_box_t *)arg);
+      break;
+    case U8G_DEV_MSG_GET_WIDTH:
+      *((u8g_uint_t *)arg) = pb->width;
+      break;
+    case U8G_DEV_MSG_GET_HEIGHT:
+      *((u8g_uint_t *)arg) = pb->p.total_height;
+      break;
+    case U8G_DEV_MSG_SET_COLOR_ENTRY:
+      break;
+    case U8G_DEV_MSG_SET_XY_CB:
+      break;
+    case U8G_DEV_MSG_GET_MODE:
+      return U8G_MODE_BW;
+  }
+  return 1;
+}
+ 
+  
+ 
 
 // =========== u8g_pb8h1.c ==============
 
@@ -7178,3 +7392,196 @@ void u8g_DrawRBox(u8g_t *u8g, u8g_uint_t x, u8g_uint_t y, u8g_uint_t w, u8g_uint
     //u8g_draw_vline(u8g, x+w, yu, hh);
   }
 }
+/*
+
+  u8g_dev_st7565_dogm128.c
+
+  Universal 8bit Graphics Library
+  
+  Copyright (c) 2011, olikraus@gmail.com
+  All rights reserved.
+
+  Redistribution and use in source and binary forms, with or without modification, 
+  are permitted provided that the following conditions are met:
+
+  * Redistributions of source code must retain the above copyright notice, this list 
+    of conditions and the following disclaimer.
+    
+  * Redistributions in binary form must reproduce the above copyright notice, this 
+    list of conditions and the following disclaimer in the documentation and/or other 
+    materials provided with the distribution.
+
+  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND 
+  CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, 
+  INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF 
+  MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE 
+  DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR 
+  CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, 
+  SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT 
+  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; 
+  LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER 
+  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, 
+  STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF 
+  ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.  
+  
+  
+*/
+
+//#include "u8g.h"
+
+#define WIDTH 128
+#define HEIGHT 64
+#define PAGE_HEIGHT 8
+
+const uint8_t u8g_dev_st7565_dogm128_init_seq[] PROGMEM = {
+  U8G_ESC_CS(0),             /* disable chip */
+  U8G_ESC_ADR(0),           /* instruction mode */
+  U8G_ESC_RST(1),           /* do reset low pulse with (1*16)+2 milliseconds */
+  U8G_ESC_CS(1),             /* enable chip */
+  
+  0x040,		                /* set display start line */
+  0x0a1,		                /* ADC set to reverse */
+  0x0c0,		                /* common output mode: set scan direction normal operation */
+  0x0a6,                           /* display normal (none reverse) */
+  0x0a2,		                /* LCD bias 1/9 */
+  0x02f,		                /* all power  control circuits on */
+  0x0f8,		                /* set booster ratio to */
+  0x000,		                /* 4x */
+  0x027,		                /* set V0 voltage resistor ratio to large */
+  0x081,		                /* set contrast */
+  0x018,		                /* contrast value, EA default: 0x016 */
+  0x0ac,		                /* indicator */
+  0x000,		                /* disable */
+  0x0a4,		                /* normal display (not all on) */
+  0x0af,		                /* display on */
+  U8G_ESC_DLY(50),       /* delay 50 ms */
+
+  U8G_ESC_CS(0),             /* disable chip */
+  U8G_ESC_END                /* end of sequence */
+};
+
+static const uint8_t u8g_dev_st7565_dogm128_data_start[] PROGMEM = {
+  U8G_ESC_ADR(0),           /* instruction mode */
+  U8G_ESC_CS(1),             /* enable chip */
+  0x010,		/* set upper 4 bit of the col adr to 0 */
+  0x000,		/* set lower 4 bit of the col adr to 0 */      
+  U8G_ESC_END                /* end of sequence */
+};
+
+static const uint8_t u8g_dev_st7565_dogm128_sleep_on[] PROGMEM = {
+  U8G_ESC_ADR(0),           /* instruction mode */
+  U8G_ESC_CS(1),             /* enable chip */
+  0x0ac,		/* static indicator off */
+  0x000,		                /* indicator register set (not sure if this is required) */
+  0x0ae,		/* display off */      
+  0x0a5,		/* all points on */      
+  U8G_ESC_CS(1),             /* disable chip */
+  U8G_ESC_END                /* end of sequence */
+};
+
+static const uint8_t u8g_dev_st7565_dogm128_sleep_off[] PROGMEM = {
+  U8G_ESC_ADR(0),           /* instruction mode */
+  U8G_ESC_CS(1),             /* enable chip */
+  0x0a4,		/* all points off */      
+  0x0af,		/* display on */      
+  U8G_ESC_DLY(50),       /* delay 50 ms */
+  U8G_ESC_CS(1),             /* disable chip */
+  U8G_ESC_END                /* end of sequence */
+};
+
+uint8_t u8g_dev_st7565_dogm128_fn(u8g_t *u8g, u8g_dev_t *dev, uint8_t msg, void *arg)
+{
+  switch(msg)
+  {
+    case U8G_DEV_MSG_INIT:
+      u8g_InitCom(u8g, dev, U8G_SPI_CLK_CYCLE_400NS);
+      u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_init_seq);
+      break;
+    case U8G_DEV_MSG_STOP:
+      break;
+    case U8G_DEV_MSG_PAGE_NEXT:
+      {
+        u8g_pb_t *pb = (u8g_pb_t *)(dev->dev_mem);
+        u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_data_start);    
+        u8g_WriteByte(u8g, dev, 0x0b0 | pb->p.page); /* select current page (ST7565R) */
+        u8g_SetAddress(u8g, dev, 1);           /* data mode */
+        if ( u8g_pb_WriteBuffer(pb, u8g, dev) == 0 )
+          return 0;
+        u8g_SetChipSelect(u8g, dev, 0);
+      }
+      break;
+    case U8G_DEV_MSG_CONTRAST:
+      u8g_SetChipSelect(u8g, dev, 1);
+      u8g_SetAddress(u8g, dev, 0);          /* instruction mode */
+      u8g_WriteByte(u8g, dev, 0x081);
+      u8g_WriteByte(u8g, dev, (*(uint8_t *)arg) >> 2);
+      u8g_SetChipSelect(u8g, dev, 0);      
+      return 1;
+    case U8G_DEV_MSG_SLEEP_ON:
+      u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_sleep_on);    
+      return 1;
+    case U8G_DEV_MSG_SLEEP_OFF:
+      u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_sleep_off);    
+      return 1;
+  }
+  return u8g_dev_pb8v1_base_fn(u8g, dev, msg, arg);
+}
+
+uint8_t u8g_dev_st7565_dogm128_2x_fn(u8g_t *u8g, u8g_dev_t *dev, uint8_t msg, void *arg)
+{
+  switch(msg)
+  {
+    case U8G_DEV_MSG_INIT:
+      u8g_InitCom(u8g, dev, U8G_SPI_CLK_CYCLE_400NS);
+      u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_init_seq);
+      break;
+    case U8G_DEV_MSG_STOP:
+      break;
+    case U8G_DEV_MSG_PAGE_NEXT:
+      {
+        uint8_t y, i;
+        uint8_t *ptr;
+        u8g_pb_t *pb = (u8g_pb_t *)(dev->dev_mem);
+        u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_data_start);    
+        u8g_WriteByte(u8g, dev, 0x0b0 | (2*pb->p.page)); /* select current page (ST7565R) */
+        u8g_SetAddress(u8g, dev, 1);           /* data mode */
+	u8g_WriteSequence(u8g, dev, pb->width, ptr); 
+        u8g_SetChipSelect(u8g, dev, 0);
+	
+        u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_data_start);    
+        u8g_WriteByte(u8g, dev, 0x0b0 | (2*pb->p.page+1)); /* select current page (ST7565R) */
+        u8g_SetAddress(u8g, dev, 1);           /* data mode */
+	u8g_WriteSequence(u8g, dev, pb->width, ptr); 
+        u8g_SetChipSelect(u8g, dev, 0);
+	
+      }
+      break;
+    case U8G_DEV_MSG_CONTRAST:
+      u8g_SetChipSelect(u8g, dev, 1);
+      u8g_SetAddress(u8g, dev, 0);          /* instruction mode */
+      u8g_WriteByte(u8g, dev, 0x081);
+      u8g_WriteByte(u8g, dev, (*(uint8_t *)arg) >> 2);
+      u8g_SetChipSelect(u8g, dev, 0);      
+      return 1;
+    case U8G_DEV_MSG_SLEEP_ON:
+      u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_sleep_on);    
+      return 1;
+    case U8G_DEV_MSG_SLEEP_OFF:
+      u8g_WriteEscSeqP(u8g, dev, u8g_dev_st7565_dogm128_sleep_off);    
+      return 1;
+  }
+  return u8g_dev_pb16h1_base_fn(u8g, dev, msg, arg);
+}
+
+U8G_PB_DEV(u8g_dev_st7565_dogm128_sw_spi, WIDTH, HEIGHT, PAGE_HEIGHT, u8g_dev_st7565_dogm128_fn, U8G_COM_SW_SPI);
+U8G_PB_DEV(u8g_dev_st7565_dogm128_hw_spi, WIDTH, HEIGHT, PAGE_HEIGHT, u8g_dev_st7565_dogm128_fn, U8G_COM_HW_SPI);
+U8G_PB_DEV(u8g_dev_st7565_dogm128_parallel, WIDTH, HEIGHT, PAGE_HEIGHT, u8g_dev_st7565_dogm128_fn, U8G_COM_PARALLEL);
+
+
+uint8_t u8g_dev_st7565_dogm128_2x_buf[WIDTH*2] U8G_NOCOMMON ; 
+u8g_pb_t u8g_dev_st7565_dogm128_2x_pb = { {16, HEIGHT, 0, 0, 0},  WIDTH, u8g_dev_st7565_dogm128_2x_buf}; 
+u8g_dev_t u8g_dev_st7565_dogm128_2x_sw_spi = { u8g_dev_st7565_dogm128_2x_fn, &u8g_dev_st7565_dogm128_2x_pb, U8G_COM_SW_SPI };
+u8g_dev_t u8g_dev_st7565_dogm128_2x_hw_spi = { u8g_dev_st7565_dogm128_2x_fn, &u8g_dev_st7565_dogm128_2x_pb, U8G_COM_HW_SPI };
+u8g_dev_t u8g_dev_st7565_dogm128_2x_parallel = { u8g_dev_st7565_dogm128_2x_fn, &u8g_dev_st7565_dogm128_2x_pb, U8G_COM_PARALLEL };
+

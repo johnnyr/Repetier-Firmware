@@ -74,13 +74,14 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 // RUMBA                      = 80  // Get it from reprapdiscount
 // FELIXprinters              = 101
 // Rambo                      = 301
+// Mini-Rambo                 = 302
 // PiBot for Repetier V1.0-1.3= 314
 // PiBot for Repetier V1.4    = 315
 // Sanguish Beta              = 501
 // Unique One rev. A          = 88
 // User layout defined in userpins.h = 999
 
-#define MOTHERBOARD 33
+#define MOTHERBOARD 302
 
 #include "pins.h"
 
@@ -1185,8 +1186,9 @@ The following settings override uiconfig.h!
 13 = SeeMeCNC Display on Rambo (ORION)
 14 = OpenHardware.co.za LCD2004 V2014
 15 = Sanguinololu + Panelolu2
+16 = Mini-Rambo + Miregli
 */
-#define FEATURE_CONTROLLER 0
+#define FEATURE_CONTROLLER 16
 
 /**
 Select the language to use.
